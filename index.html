@@ -124,6 +124,7 @@ h1 {
 let nickname = "";
 let colorClass = "";
 
+// вход в чат
 function enterChat() {
     nickname = document.getElementById("nickname").value.trim();
     if (!nickname) return;
@@ -138,6 +139,7 @@ function enterChat() {
     setInterval(loadMessages, 1000);
 }
 
+// отправка сообщения
 function sendMsg() {
     const text = document.getElementById("text").value.trim();
     if (!text) return;
@@ -154,6 +156,7 @@ function sendMsg() {
     });
 }
 
+// загрузка сообщений
 function loadMessages() {
     fetch("/messages")
         .then(r => r.json())
