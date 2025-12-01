@@ -1,3 +1,115 @@
+const usersEl = document.getElementById('users');
+  const nickField = document.getElementById('nickField');
+  const msgField = document.getElementById('msgField');
+  const sendBtn = document.getElementById('sendBtn');
+  const fsBtn = document.getElementById('fsBtn');
+
+  // nickname save/load
+  let nick = localStorage.getItem('bubble_nick') || '';
+  if (!nick) {
+    // prompt once
+    nick = (prompt('Введите ник для BubbleChat (будет сохранён):') || '').trim();
+    if (!nick) nick = 'Гость' + Math.floor(Math.random()*1000);
+    localStorage.setItem('bubble_nick', nick);
+  }
+  nickField.value = nick;
+
+  // compute same deterministic color as server (HSL hash)
+  function nickColor(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+    h = Math.abs(h) % 360;
+    return hsl(${h},70%,55%);
+  }
+
+  // WebSocket
+  const WS = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+  const ws = new WebSocket(WS);
+
+  // local online list
+  let online = new Set();
+
+  // ensure server knows our nick upon connect
+  ws.addEventListener('open', () => {
+    ws.send(JSON.stringify({ type: 'setNick', nick }));
+  });
+
+  // add message to UI
+  function addMsg(obj, scroll = true) {
+    // obj: { type:'chat', nick, color, text, ts }
+    const wrap = document.createElement('div');
+    wrap.className = 'msg';
+
+    const nickSpan = document.createElement('span');
+    nickSpan.className = 'nick';
+    nickSpan.textContent = obj.nick;
+    nickSpan.style.color = obj.color || nickColor(obj.nick);
+    nickSpan.title = 'Нажми, чтобы ответить';
+
+    // nickname click -> insert @nick into msg field
+    nickSpan.addEventListener('click', () => {
+      msgField.value = '@' + obj.nick + ' ';
+      msgField.focus();
+      msgField.selectionStart = msgField.value.length;
+    });
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'text';
+    textSpan.textContent = ': ' + obj.text;
+
+    wrap.appendChild(nickSpan);
+    wrap.appendChild(textSpan);
+
+    // check mention for current user (exact match with @Nick or @nick at word boundary)
+    const mentionRegex = new RegExp('(^|\\s)@' + escapeRegExp(nick) + '(\\b|\\s|$)', 'i');
+    if (mentionRegex.test(obj.text)) {
+      // add mention class to blink a few times
+      wrap.classList.add('mention');
+      // remove class after animation finish (0.5s * 4 = 2s)
+      setTimeout(() => wrap.classList.remove('mention'), 2100);
+      // optionally play a small sound or show title. (not added)
+    }
+
+    main.appendChild(wrap);
+    if (scroll) main.scrollTop = main.scrollHeight;
+  }
+
+  function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  // handle incoming WS
+  ws.addEventListener('message', (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
+
+      // history array
+      if (Array.isArray(data) && data.length && data[0].type) {
+        // older versions might send raw arrays — handle gracefully
+        data.forEach(item => item && item.type === 'chat' && addMsg(item));
+        return;
+      }
+
+      if (data.type === 'history' && Array.isArray(data.data)) {
+        // data.data is list of chat objects
+        data.data.forEach(item => addMsg(item, false));
+        // scroll to bottom after all added
+        main.scrollTop = main.scrollHeight;
+        return;
+      }
+
+      if (data.type === 'chat') {
+        addMsg(data);
+        // update online set if needed (we don't have users list from server in this version)
+        // Optionally we could maintain online users if server sent that
+        return;
+      }
+      // backwards compatibility: if message is chat object itself
+      if (data.nick && data.text) {
+        addMsg(data);
+      }
+    } catch (e) {
+      console.error('Invalid WS msg', e);
+    }
+  });
 <!DOCTYPE html>
 <html lang="ru">
 <head>
