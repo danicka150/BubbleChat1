@@ -3,160 +3,141 @@
 <head>
 <meta charset="UTF-8">
 <title>BubbleChat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
-body{margin:0;font-family:Arial;background:#e8f0ff}
-.app{width:360px;height:640px;margin:auto;background:white;border-radius:10px;overflow:hidden}
-.top{background:#bde4a7;padding:10px;font-weight:bold;text-align:center}
-.sidebar{width:140px;float:left;height:100%;background:#f3ffe8;overflow:auto}
-.content{margin-left:140px;padding:10px;font-size:14px}
-.friend{padding:6px;border-bottom:1px solid #ccc;cursor:pointer}
-.friend.online{background:#d8ffd8}
-.friend.offline{background:#eee}
-.chat{height:180px;overflow:auto;border:1px solid #ccc;margin-bottom:5px;padding:5px}
-input,button{margin:2px}
+body {
+    margin: 0;
+    background: #1a1a1a;
+    font-family: monospace;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+#messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    font-size: 16px;
+    word-break: break-word;
+}
+
+#inputBar {
+    display: flex;
+    padding: 10px;
+    background: #111;
+}
+
+#msg {
+    flex: 1;
+    font-size: 16px;
+    padding: 10px;
+    background: #222;
+    border: none;
+    color: white;
+}
+
+#msg:focus { outline: none; }
+
+.bubble {
+    padding: 6px 10px;
+    margin: 4px 0;
+    background: #2b2b2b;
+    border-radius: 5px;
+}
+
+.nick {
+    font-weight: bold;
+}
+
+.mentionFlash {
+    animation: flash 0.5s ease-in-out 4;
+}
+
+@keyframes flash {
+    0% { background: #ff4444; }
+    50% { background: #2b2b2b; }
+    100% { background: #ff4444; }
+}
+
 </style>
+
 </head>
 <body>
 
-<div class="app">
-  <div class="top">BubbleChat</div>
+<div id="messages"></div>
 
-  <div class="sidebar">
-    <input id="search" placeholder="Поиск" oninput="loadFriends()">
-    <div id="friends"></div>
-  </div>
-
-  <div class="content">
-    <input id="nick" placeholder="Ник"><br>
-    <input id="pass" placeholder="Пароль"><br>
-    <input id="avatar" placeholder="Аватар (ссылка)"><br>
-    <button onclick="signup()">Регистрация</button>
-    <button onclick="login()">Вход</button>
-    <button onclick="logout()">Выход</button>
-
-    <hr>
-
-    <div id="chat" class="chat"></div>
-    <input id="msg">
-    <button onclick="send()">➤</button>
-    <button onclick="block()">🚫</button>
-    <button onclick="unblock()">✅</button>
-    <button onclick="removeFriend()">❌ Удалить из друзей</button>
-
-    <hr>
-
-    <input id="newAvatar" placeholder="Новая аватарка">
-    <input id="newPass" placeholder="Новый пароль">
-    <button onclick="updateProfile()">💾 Обновить профиль</button>
-
-    <hr>
-
-    <button onclick="roulette()">🎲 Чат-рулетка</button>
-  </div>
+<div id="inputBar">
+    <input id="msg" placeholder="Сообщение..." autocomplete="off">
 </div>
 
 <script>
-let me=null, current=null;
+let ws;
+let myNick = "";
+let myColor = "";
+let messages = document.getElementById("messages");
+let input = document.getElementById("msg");
 
-async function signup(){
-  await fetch("/api/signup",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({nick:nick.value,password:pass.value,avatar:avatar.value})});
-  alert("Готово");
+// Аккуратный запрос ника
+while (!myNick.trim()) {
+    myNick = prompt("Введи свой ник для BubbleChat:");
 }
 
-async function login(){
-  const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({nick:nick.value,password:pass.value})});
-  const d=await r.json();
-  if(d.error){alert(d.error);return;}
-  me=d.user.nick;
-  loadFriends();
-}
+ws = new WebSocket(location.origin.replace("http", "ws"));
 
-async function logout(){
-  await fetch("/api/logout",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({nick:me})});
-  me=null;
-  alert("Выход");
-}
+ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "setNick", nick: myNick }));
+};
 
-async function loadFriends(){
-  const r=await fetch("/api/users");
-  const d=await r.json();
-  const q=search.value.toLowerCase();
-  friends.innerHTML="";
-  d.filter(u=>u.nick.toLowerCase().includes(q)).forEach(u=>{
-    if(u.nick!==me){
-      const div=document.createElement("div");
-      div.className="friend "+u.status;
-      div.textContent=u.nick+" ("+u.status+")";
-      div.onclick=()=>openChat(u.nick);
-      friends.appendChild(div);
+ws.onmessage = e => {
+    const data = JSON.parse(e.data);
+
+    // История
+    if (data.type === "history") {
+        data.history.forEach(addMessage);
+        return;
     }
-  });
+
+    if (data.type === "chat") {
+        addMessage(data.message);
+    }
+};
+
+function addMessage(m) {
+    let div = document.createElement("div");
+    div.className = "bubble";
+
+    div.innerHTML = 
+        <span class="nick" style="color:${m.color}">@${m.nick}:</span>
+        <span>${m.text}</span>
+    ;
+
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+
+    // Проверяем @упоминание
+    if (m.text.includes("@" + myNick)) {
+        div.classList.add("mentionFlash");
+    }
+
+    // Клик по нику → вставляет @ник
+    div.querySelector(".nick").onclick = () => {
+        input.value = "@" + m.nick + " ";
+        input.focus();
+    };
 }
 
-async function openChat(n){
-  current=n;
-  chat.innerHTML="Загрузка истории...";
-  const r = await fetch(/api/chat-history?me=${me}&friend=${current});
-  const d = await r.json();
-  chat.innerHTML="";
-  d.forEach(m=>chat.innerHTML += ${m.from}: ${m.text}<br>);
-}
-
-async function send(){
-  if(!current){alert("Выберите друга");return;}
-  await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({from:me,to:current,text:msg.value})});
-  msg.value="";
-}
-
-async function block(){
-  await fetch("/api/block",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({me:me,target:current})});
-  alert("Заблокирован");
-}
-
-async function unblock(){
-  await fetch("/api/unblock",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({me:me,target:current})});
-  alert("Разблокирован");
-}
-
-async function removeFriend(){
-  await fetch("/api/remove-friend",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({me:me,friend:current})});
-  alert("Удалено из друзей");
-  loadFriends();
-  chat.innerHTML="";
-}
-async function updateProfile(){
-  await fetch("/api/update-profile",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({me:me,avatar:newAvatar.value,password:newPass.value})});
-  alert("Профиль обновлён");
-  loadFriends();
-}
-
-async function roulette(){
-  const r=await fetch("/api/roulette/join",{method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({nick:me})});
-  const d=await r.json();
-  if(d.match){
-    current=d.match[0]==me?d.match[1]:d.match[0];
-    alert("Тебе попался: "+current);
-  }else alert("Поиск...");
-}
-
-// автообновление чата каждые 2 сек
-setInterval(async ()=>{
-  if(me && current){
-    const r = await fetch(/api/chat-history?me=${me}&friend=${current});
-    const d = await r.json();
-    chat.innerHTML="";
-    d.forEach(m=>chat.innerHTML += ${m.from}: ${m.text}<br>);
-  }
-},2000);
+input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && input.value.trim() !== "") {
+        ws.send(JSON.stringify({
+            type: "chat",
+            text: input.value
+        }));
+        input.value = "";
+    }
+});
 </script>
 
 </body>
