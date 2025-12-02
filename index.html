@@ -2,178 +2,105 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>BubbleChat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<link href="https://fonts.cdnfonts.com/css/pixelify-sans" rel="stylesheet">
-
+<title>BubbleChat</title>
 <style>
-body {
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  body {
     margin: 0;
-    background: #202020;
-    font-family: 'Pixelify Sans', monospace;
-}
-
-.screen {
-    max-width: 650px;
+    font-family: 'Press Start 2P', cursive;
+    background: #111;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
     height: 100vh;
-    margin: auto;
-    display: flex;
-    flex-direction: column;
-    background: #d0d0d0;
-    border-left: 3px solid #777;
-    border-right: 3px solid #777;
-}
+  }
 
-#login {
-    margin: auto;
-    text-align: center;
-}
-
-#login input {
-    font-family: 'Pixelify Sans';
-    padding: 8px;
-    font-size: 20px;
-}
-
-#login button {
-    margin-top: 10px;
-    font-size: 20px;
-    padding: 5px 20px;
-}
-
-#chat {
-    display: none;
+  #chat {
     flex: 1;
-    flex-direction: column;
-}
-
-h1 {
-    font-size: 32px;
-    margin-bottom: 15px;
-    color: white;
-    text-shadow: 2px 2px 0px black;
-}
-
-.chat-window {
-    flex: 1;
-    background: #c8c8c8;
-    padding: 10px;
     overflow-y: auto;
-    font-size: 18px;
-    border-bottom: 2px inset #fff;
-}
+    padding: 10px;
+  }
 
-.msg { margin-bottom: 6px; }
+  .message {
+    margin-bottom: 5px;
+  }
 
-.bottom {
+  #inputArea {
     display: flex;
-    padding: 8px;
-    background: #ddd;
-}
+    padding: 10px;
+    background: #222;
+  }
 
-.bottom input {
+  #nickname, #messageInput {
+    font-family: 'Press Start 2P', cursive;
+    background: #111;
+    color: #fff;
+    border: 1px solid #555;
+    padding: 5px;
+  }
+
+  #nickname {
+    width: 120px;
+    margin-right: 5px;
+  }
+
+  #messageInput {
     flex: 1;
-    padding: 6px;
-    font-size: 18px;
-    font-family: 'Pixelify Sans';
-    border: 2px inset #fff;
-}
+  }
 
-.bottom button {
-    font-family: 'Pixelify Sans';
-    width: 100px;
-    margin-left: 8px;
-    font-size: 20px;
-}
-
-/* Цвета ников */
-.nick-red { color: #ff0044; }
-.nick-blue { color: #0055ff; }
-.nick-purple { color: #aa00dd; }
-.nick-green { color: #00aa55; }
+  #sendButton {
+    margin-left: 5px;
+    padding: 5px 10px;
+    font-family: 'Press Start 2P', cursive;
+    background: #333;
+    color: #fff;
+    border: 1px solid #555;
+    cursor: pointer;
+  }
 </style>
 </head>
-
 <body>
-<div class="screen">
-
-    <!-- Экран входа -->
-    <div id="login">
-        <h1>BubbleChat</h1>
-        <h2 style="color: white;">Введите ник:</h2>
-
-        <input id="nickname" maxlength="20" />
-        <br>
-        <button onclick="enterChat()">Войти</button>
-    </div>
-
-    <!-- Чат -->
-    <div id="chat">
-        <div class="chat-window" id="messages"></div>
-
-        <div class="bottom">
-            <input id="text" placeholder="Сообщение... (@ник)">
-            <button onclick="sendMsg()">Отпр.</button>
-        </div>
-    </div>
-
+<div id="chat"></div>
+<div id="inputArea">
+  <input type="text" id="nickname" placeholder="Ник">
+  <input type="text" id="messageInput" placeholder="Сообщение">
+  <button id="sendButton">Отправить</button>
 </div>
 
 <script>
-let nickname = "";
-let colorClass = "";
+  const ws = new WebSocket(ws://${location.host});
+  const chat = document.getElementById('chat');
+  const nicknameInput = document.getElementById('nickname');
+  const messageInput = document.getElementById('messageInput');
+  const sendButton = document.getElementById('sendButton');
 
-// вход в чат
-function enterChat() {
-    nickname = document.getElementById("nickname").value.trim();
-    if (!nickname) return;
+  function getRandomColor() {
+    const colors = ['#FF6B6B', '#6BCB77', '#4D96FF', '#FFD93D', '#FF6EC7'];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
 
-    const colors = ["nick-red", "nick-blue", "nick-purple", "nick-green"];
-    colorClass = colors[Math.floor(Math.random() * colors.length)];
+  sendButton.addEventListener('click', () => {
+    const nickname = nicknameInput.value.trim() || 'Anon';
+    const message = messageInput.value.trim();
+    if (!message) return;
+    ws.send(JSON.stringify({ nickname, message }));
+    messageInput.value = '';
+  });
 
-    document.getElementById("login").style.display = "none";
-    document.getElementById("chat").style.display = "flex";
+  messageInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendButton.click();
+  });
 
-    loadMessages();
-    setInterval(loadMessages, 1000);
-}
-
-// отправка сообщения
-function sendMsg() {
-    const text = document.getElementById("text").value.trim();
-    if (!text) return;
-    document.getElementById("text").value = "";
-
-    fetch("/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            nick: nickname,
-            color: colorClass,
-            text: text
-        })
-    });
-}
-
-// загрузка сообщений
-function loadMessages() {
-    fetch("/messages")
-        .then(r => r.json())
-        .then(list => {
-            const box = document.getElementById("messages");
-            box.innerHTML = "";
-
-            list.forEach(m => {
-                box.innerHTML += <div class="msg">
-                    <span class="${m.color}"><b>${m.nick}:</b></span> ${m.text}
-                </div>;
-            });
-
-            box.scrollTop = box.scrollHeight;
-        });
-}
+  ws.onmessage = event => {
+    const { nickname, message } = JSON.parse(event.data);
+    const msgEl = document.createElement('div');
+    msgEl.className = 'message';
+    msgEl.innerHTML = <span style="color:${getRandomColor()}">${nickname}:</span> ${message};
+    chat.appendChild(msgEl);
+    chat.scrollTop = chat.scrollHeight;
+  };
 </script>
-
 </body>
 </html>

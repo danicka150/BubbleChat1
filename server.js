@@ -1,23 +1,28 @@
-const express = require("express");
-const path = require("path");
+const express = require('express');
+const { WebSocketServer } = require('ws');
+const path = require('path');
 
 const app = express();
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
 
-let messages = [];
+// Статические файлы (фронтенд)
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
+// Запуск HTTP-сервера
+const server = app.listen(PORT, () => {
+  console.log(BubbleChat running on port ${PORT});
 });
 
-app.get("/messages", (req, res) => {
-    res.json(messages);
-});
+// WebSocket-сервер
+const wss = new WebSocketServer({ server });
 
-app.post("/messages", (req, res) => {
-    messages.push(req.body);
-    if (messages.length > 200) messages.shift();
-    res.json({ ok: true });
+wss.on('connection', ws => {
+  ws.on('message', message => {
+    // Рассылаем сообщение всем клиентам
+    wss.clients.forEach(client => {
+      if (client.readyState === client.OPEN) {
+        client.send(message);
+      }
+    });
+  });
 });
-
-app.listen(3000, () => console.log("BubbleChat running at http://localhost:3000"));
